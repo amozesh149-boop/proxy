@@ -1,0 +1,58 @@
+name: Advanced Proxy Fetcher
+
+on:
+  schedule:
+    - cron: '*/15 * * * *'  # هر 15 دقیقه
+  workflow_dispatch:
+    inputs:
+      target_url:
+        description: 'URL to fetch'
+        required: false
+        default: ''
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install requests beautifulsoup4 lxml
+
+      - name: Read target URL
+        id: read_url
+        run: |
+          if [ -f "config.txt" ]; then
+            URL=$(cat config.txt | grep -v '^#' | head -1)
+            echo "target_url=$URL" >> $GITHUB_OUTPUT
+          else
+            echo "target_url=https://www.wikipedia.org" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Fetch and process content
+        env:
+          TARGET_URL: ${{ github.event.inputs.target_url || steps.read_url.outputs.target_url }}
+        run: python scripts/fetcher.py
+
+      - name: Generate index
+        run: python scripts/generate_index.py
+
+      - name: Commit changes
+        run: |
+          git config user.name "Proxy Bot"
+          git config user.email "bot@github.com"
+          git add docs/
+          git diff --staged --quiet || git commit -m "🔄 Update: $(date '+%Y-%m-%d %H:%M:%S')"
+          git push
